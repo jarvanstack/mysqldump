@@ -1,4 +1,4 @@
-## mysqldump2
+## mysqldump
 
 [English](./README.md)
 

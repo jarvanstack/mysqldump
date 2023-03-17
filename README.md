@@ -1,4 +1,4 @@
-## mysqldump2
+## mysqldump
 
 [简体中文](README-zh.md)
 
