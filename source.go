@@ -10,9 +10,8 @@ import (
 )
 
 type sourceOption struct {
-	dryRun       bool
-	isDeleteDB   bool
-	isExecByLine bool
+	dryRun     bool
+	isDeleteDB bool
 }
 type SourceOption func(*sourceOption)
 
@@ -25,13 +24,6 @@ func WithDryRun() SourceOption {
 func WithDeleteDB() SourceOption {
 	return func(o *sourceOption) {
 		o.isDeleteDB = true
-	}
-}
-
-// 一句一句执行
-func WithExecByLine() SourceOption {
-	return func(o *sourceOption) {
-		o.isExecByLine = true
 	}
 }
 
@@ -111,36 +103,36 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 
 	// 一句一句执行
 	r := bufio.NewReader(reader)
-	if o.isExecByLine {
-		for {
-			line, err := r.ReadString(';')
-			if err != nil {
-				if err == io.EOF {
-					break
-				}
-				log.Printf("[error] %v\n", err)
-				return err
-			}
-
-			_, err = dbWrapper.Exec(string(line))
-			if err != nil {
-				log.Printf("[error] %v\n", err)
-				return err
-			}
-		}
-	} else {
-		// 一次性执行
-		all, err := io.ReadAll(r)
-		if err != nil {
-			log.Printf("[error] %v\n", err)
-			return err
-		}
-		_, err = dbWrapper.Exec(string(all))
-		if err != nil {
-			log.Printf("[error] %v\n", err)
-			return err
-		}
-
+	// 关闭事务
+	_, err = dbWrapper.Exec("SET autocommit=0;")
+	if err != nil {
+		log.Printf("[error] %v\n", err)
+		return err
 	}
+
+	for {
+		line, err := r.ReadString(';')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			log.Printf("[error] %v\n", err)
+			return err
+		}
+
+		_, err = dbWrapper.Exec(string(line))
+		if err != nil {
+			log.Printf("[error] %v\n", err)
+			return err
+		}
+	}
+
+	// 开启事务
+	_, err = dbWrapper.Exec("SET autocommit=1;")
+	if err != nil {
+		log.Printf("[error] %v\n", err)
+		return err
+	}
+
 	return nil
 }
