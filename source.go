@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"strings"
 )
 
 type sourceOption struct {
@@ -64,11 +63,8 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 		return err
 	}
 
-	// 如果数据库不存在, 必须先创建数据库, 所以这里要把数据库名替换成mysql, 才能连接到mysql数据库
-	mysqlDNS := strings.Replace(dns, dbName, "mysql", 1)
-
 	// Open database
-	db, err = sql.Open("mysql", mysqlDNS)
+	db, err = sql.Open("mysql", dns)
 	if err != nil {
 		log.Printf("[error] %v\n", err)
 		return err
@@ -77,6 +73,16 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 
 	// DB Wrapper
 	dbWrapper := NewDBWrapper(db, o.dryRun)
+
+	// Use database
+	_, err = dbWrapper.Exec(fmt.Sprintf("USE %s;", dbName))
+	if err != nil {
+		log.Printf("[error] %v\n", err)
+		return err
+	}
+
+	// 设置超时时间1小时
+	db.SetConnMaxLifetime(3600)
 
 	// 删除数据库
 	if o.isDeleteDB {
@@ -89,13 +95,6 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 
 	// 创建数据库
 	_, err = dbWrapper.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", dbName))
-	if err != nil {
-		log.Printf("[error] %v\n", err)
-		return err
-	}
-
-	// Use database
-	_, err = dbWrapper.Exec(fmt.Sprintf("USE %s", dbName))
 	if err != nil {
 		log.Printf("[error] %v\n", err)
 		return err
@@ -125,6 +124,13 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 			log.Printf("[error] %v\n", err)
 			return err
 		}
+	}
+
+	// 提交事务
+	_, err = dbWrapper.Exec("COMMIT;")
+	if err != nil {
+		log.Printf("[error] %v\n", err)
+		return err
 	}
 
 	// 开启事务
