@@ -314,10 +314,18 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 		values = append(values, row)
 	}
 
-	for _, row := range values {
-		buf.WriteString("INSERT INTO `")
-		buf.WriteString(table)
-		buf.WriteString("` VALUES (")
+	hasInsert := false
+
+	for rowIdx, row := range values {
+		if !hasInsert {
+			buf.WriteString("INSERT INTO `")
+			buf.WriteString(table)
+			buf.WriteString("` VALUES ")
+			hasInsert = true
+		}
+
+		buf.WriteString("(")
+
 		for i, col := range row {
 			if col == nil {
 				buf.WriteString("NULL")
@@ -401,7 +409,13 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 				buf.WriteString(",")
 			}
 		}
-		buf.WriteString(");\n")
+		buf.WriteString(")")
+		if rowIdx < len(values)-1 {
+			buf.WriteString(",")
+		} else {
+			buf.WriteString(";")
+		}
+		buf.WriteString("\n")
 	}
 
 	buf.WriteString("\n\n")
