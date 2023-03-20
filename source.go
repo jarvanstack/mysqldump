@@ -9,20 +9,13 @@ import (
 )
 
 type sourceOption struct {
-	dryRun     bool
-	isDeleteDB bool
+	dryRun bool
 }
 type SourceOption func(*sourceOption)
 
 func WithDryRun() SourceOption {
 	return func(o *sourceOption) {
 		o.dryRun = true
-	}
-}
-
-func WithDeleteDB() SourceOption {
-	return func(o *sourceOption) {
-		o.isDeleteDB = true
 	}
 }
 
@@ -84,22 +77,6 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 	// 设置超时时间1小时
 	db.SetConnMaxLifetime(3600)
 
-	// 删除数据库
-	if o.isDeleteDB {
-		_, err = dbWrapper.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", dbName))
-		if err != nil {
-			log.Printf("[error] %v\n", err)
-			return err
-		}
-	}
-
-	// 创建数据库
-	_, err = dbWrapper.Exec(fmt.Sprintf("CREATE DATABASE IF NOT EXISTS %s", dbName))
-	if err != nil {
-		log.Printf("[error] %v\n", err)
-		return err
-	}
-
 	// 一句一句执行
 	r := bufio.NewReader(reader)
 	// 关闭事务
@@ -119,7 +96,9 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 			return err
 		}
 
-		_, err = dbWrapper.Exec(string(line))
+		ssql := string(line)
+
+		_, err = dbWrapper.Exec(ssql)
 		if err != nil {
 			log.Printf("[error] %v\n", err)
 			return err
