@@ -315,12 +315,11 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 	}
 
 	for _, row := range values {
-		buf.WriteString("INSERT INTO `")
-		buf.WriteString(table)
-		buf.WriteString("` VALUES (")
+		ssql := "INSERT INTO `" + table + "` VALUES ("
+
 		for i, col := range row {
 			if col == nil {
-				buf.WriteString("NULL")
+				ssql += "NULL"
 			} else {
 				Type := columnTypes[i].DatabaseTypeName()
 				// 去除 UNSIGNED 和空格
@@ -329,18 +328,18 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 				switch Type {
 				case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT":
 					if bs, ok := col.([]byte); ok {
-						buf.WriteString(fmt.Sprintf("%s", string(bs)))
+						ssql += fmt.Sprintf("%s", string(bs))
 					} else {
-						buf.WriteString(fmt.Sprintf("%d", col))
+						ssql += fmt.Sprintf("%d", col)
 					}
 				case "FLOAT", "DOUBLE":
 					if bs, ok := col.([]byte); ok {
-						buf.WriteString(fmt.Sprintf("%s", string(bs)))
+						ssql += fmt.Sprintf("%s", string(bs))
 					} else {
-						buf.WriteString(fmt.Sprintf("%f", col))
+						ssql += fmt.Sprintf("%f", col)
 					}
 				case "DECIMAL", "DEC":
-					buf.WriteString(fmt.Sprintf("%s", col))
+					ssql += fmt.Sprintf("%s", col)
 
 				case "DATE":
 					t, ok := col.(time.Time)
@@ -348,49 +347,49 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 						log.Println("DATE 类型转换错误")
 						return err
 					}
-					buf.WriteString(fmt.Sprintf("'%s'", t.Format("2006-01-02")))
+					ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02"))
 				case "DATETIME":
 					t, ok := col.(time.Time)
 					if !ok {
 						log.Println("DATETIME 类型转换错误")
 						return err
 					}
-					buf.WriteString(fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05")))
+					ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
 				case "TIMESTAMP":
 					t, ok := col.(time.Time)
 					if !ok {
 						log.Println("TIMESTAMP 类型转换错误")
 						return err
 					}
-					buf.WriteString(fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05")))
+					ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
 				case "TIME":
 					t, ok := col.([]byte)
 					if !ok {
 						log.Println("TIME 类型转换错误")
 						return err
 					}
-					buf.WriteString(fmt.Sprintf("'%s'", string(t)))
+					ssql += fmt.Sprintf("'%s'", string(t))
 				case "YEAR":
 					t, ok := col.([]byte)
 					if !ok {
 						log.Println("YEAR 类型转换错误")
 						return err
 					}
-					buf.WriteString(fmt.Sprintf("%s", string(t)))
+					ssql += fmt.Sprintf("%s", string(t))
 				case "CHAR", "VARCHAR", "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT":
-					buf.WriteString(fmt.Sprintf("'%s'", strings.Replace(fmt.Sprintf("%s", col), "'", "''", -1)))
+					ssql += fmt.Sprintf("'%s'", strings.Replace(fmt.Sprintf("%s", col), "'", "''", -1))
 				case "BIT", "BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB":
-					buf.WriteString(fmt.Sprintf("0x%X", col))
+					ssql += fmt.Sprintf("0x%X", col)
 				case "ENUM", "SET":
-					buf.WriteString(fmt.Sprintf("'%s'", col))
+					ssql += fmt.Sprintf("'%s'", col)
 				case "BOOL", "BOOLEAN":
 					if col.(bool) {
-						buf.WriteString("true")
+						ssql += "true"
 					} else {
-						buf.WriteString("false")
+						ssql += "false"
 					}
 				case "JSON":
-					buf.WriteString(fmt.Sprintf("'%s'", col))
+					ssql += fmt.Sprintf("'%s'", col)
 				default:
 					// unsupported type
 					log.Printf("unsupported type: %s", Type)
@@ -398,10 +397,11 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 				}
 			}
 			if i < len(row)-1 {
-				buf.WriteString(",")
+				ssql += ","
 			}
 		}
-		buf.WriteString(");\n")
+		ssql += ");\n"
+		buf.WriteString(ssql)
 	}
 
 	buf.WriteString("\n\n")
