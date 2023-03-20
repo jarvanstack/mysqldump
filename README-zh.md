@@ -9,6 +9,7 @@ golang 中实现的零依赖、高性能、并发 mysqldump 工具。
 
 * 自定义 Writer: 如本地文件、多文件储存、远程服务器、云存储等。（默认控制台输出）。
 * 支持所有 MYSQL 数据类型.
+* 支持 INSERT Merge, 大幅提升数据恢复性能
 
 ## QuickStart
 
@@ -165,7 +166,7 @@ func main() {
 	_ = mysqldump.Source(
 		dns,
 		f,
-		// mysqldump.WithDeleteDB(), // Option: Delete db before create (Default: Not delete db)
+    mysqldump.WithMergeInsert(1000),// Option: Merge insert 1000 (Default: Not merge insert)
 	)
 }
 ```

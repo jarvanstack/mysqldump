@@ -8,6 +8,8 @@ A zero-dependency, high-performance, concurrent mysqldump tool implemented in go
 
 * Supports custom Writer: data can be written to any Writer, such as local files, multiple file storage, remote servers, cloud storage, etc. (default console output).
 * Supports all MySQL data types QuickStart.
+* Support Merge Insert Option in Source Greatly improve data recovery performance
+
 
 ## QuickStart
 
@@ -164,7 +166,7 @@ func main() {
 	_ = mysqldump.Source(
 		dns,
 		f,
-		// mysqldump.WithDeleteDB(), // Option: Delete db before create (Default: Not delete db)
+    mysqldump.WithMergeInsert(1000),// Option: Merge insert 1000 (Default: Not merge insert)
 	)
 }
 ```
