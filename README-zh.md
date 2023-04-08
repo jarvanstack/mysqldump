@@ -2,7 +2,7 @@
 
 [English](./README.md)
 
-golang 中实现的零依赖、高性能、并发 mysqldump 工具。
+golang 实现的零依赖、高性能、并发 mysqldump 工具。
 
 
 ## Features
