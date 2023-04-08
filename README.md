@@ -4,7 +4,7 @@
 
 A zero-dependency, high-performance, concurrent mysqldump tool implemented in golang.
 
-## Features
+## Features 
 
 * Supports custom Writer: data can be written to any Writer, such as local files, multiple file storage, remote servers, cloud storage, etc. (default console output).
 * Supports all MySQL data types QuickStart.
