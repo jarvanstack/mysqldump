@@ -65,7 +65,7 @@ INSERT INTO `test` VALUES (1,'abc','def',0x61626300000000000000,0x646566,0x74696
 import (
 	"os"
 
-	"github.com/dengjiawen8955/mysqldump"
+	"github.com/jarvanstack/mysqldump"
 )
 
 func main() {
@@ -155,7 +155,7 @@ INSERT INTO `test` VALUES (1,'abc','def',0x61626300000000000000,0x646566,0x74696
 import (
 	"os"
 
-	"github.com/dengjiawen8955/mysqldump"
+	"github.com/jarvanstack/mysqldump"
 )
 
 func main() {
