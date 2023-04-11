@@ -151,7 +151,7 @@ func Dump(dns string, opts ...DumpOption) error {
 
 	// 2. 获取表
 	for _, dbStr := range dbs {
-		_, err = db.Exec("USE " + dbStr)
+		_, err = db.Exec("USE `" + dbStr + "`")
 		if err != nil {
 			log.Printf("[error] %v \n", err)
 			return err
