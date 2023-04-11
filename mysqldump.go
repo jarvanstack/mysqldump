@@ -201,6 +201,10 @@ func Dump(dns string, opts ...DumpOption) error {
 	buf.WriteString("-- Dumped by mysqldump2\n")
 	buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
 	buf.WriteString("-- ----------------------------\n")
+	buf.Flush()
+
+	// 打印结果
+	fmt.Printf("Dumped %d databases, cost time: %s \n", len(dbs), time.Since(start).String())
 
 	return nil
 }

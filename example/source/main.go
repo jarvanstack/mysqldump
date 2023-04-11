@@ -14,6 +14,5 @@ func main() {
 	_ = mysqldump.Source(
 		dns,
 		f,
-		// mysqldump.WithDeleteDB(), // Option: Delete db before create (Default: Not delete db)
 	)
 }
