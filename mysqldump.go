@@ -211,7 +211,7 @@ func Dump(dns string, opts ...DumpOption) error {
 
 func getCreateTableSQL(db *sql.DB, table string) (string, error) {
 	var createTableSQL string
-	err := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE %s", table)).Scan(&table, &createTableSQL)
+	err := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", table)).Scan(&table, &createTableSQL)
 	if err != nil {
 		return "", err
 	}
@@ -284,7 +284,7 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 	buf.WriteString(fmt.Sprintf("-- Records of %s\n", table))
 	buf.WriteString("-- ----------------------------\n")
 
-	lineRows, err := db.Query(fmt.Sprintf("SELECT * FROM %s", table))
+	lineRows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", table))
 	if err != nil {
 		log.Printf("[error] %v \n", err)
 		return err
