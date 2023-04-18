@@ -42,7 +42,6 @@ func NewDBWrapper(db *sql.DB, dryRun bool) *DBWrapper {
 }
 
 func (db *DBWrapper) Exec(query string, args ...interface{}) (sql.Result, error) {
-	fmt.Printf("[SQL] query: %s , args: %v \n", query, args)
 	if db.dryRun {
 		return nil, nil
 	}
