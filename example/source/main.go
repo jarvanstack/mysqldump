@@ -14,5 +14,7 @@ func main() {
 	_ = mysqldump.Source(
 		dns,
 		f,
+		mysqldump.WithMergeInsert(1000),
+		mysqldump.WithDebug(),
 	)
 }

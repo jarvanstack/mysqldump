@@ -88,6 +88,15 @@ func WithWriter(writer io.Writer) DumpOption {
 }
 
 func Dump(dns string, opts ...DumpOption) error {
+	// 打印开始
+	start := time.Now()
+	log.Printf("[info] [dump] start at %s\n", start.Format("2006-01-02 15:04:05"))
+	// 打印结束
+	defer func() {
+		end := time.Now()
+		log.Printf("[info] [dump] end at %s, cost %s\n", end.Format("2006-01-02 15:04:05"), end.Sub(start))
+	}()
+
 	var err error
 
 	var o dumpOption
@@ -122,7 +131,6 @@ func Dump(dns string, opts ...DumpOption) error {
 	defer buf.Flush()
 
 	// 打印 Header
-	start := time.Now()
 	buf.WriteString("-- ----------------------------\n")
 	buf.WriteString("-- MySQL Database Dump\n")
 	buf.WriteString("-- Start Time: " + start.Format("2006-01-02 15:04:05") + "\n")
@@ -151,7 +159,7 @@ func Dump(dns string, opts ...DumpOption) error {
 
 	// 2. 获取表
 	for _, dbStr := range dbs {
-		_, err = db.Exec("USE `" + dbStr + "`")
+		_, err = db.Exec(fmt.Sprintf("USE `%s`", dbStr))
 		if err != nil {
 			log.Printf("[error] %v \n", err)
 			return err
@@ -168,6 +176,8 @@ func Dump(dns string, opts ...DumpOption) error {
 		} else {
 			tables = o.tables
 		}
+
+		buf.WriteString(fmt.Sprintf("USE `%s`;\n", dbStr))
 
 		// 3. 导出表
 		for _, table := range tables {
@@ -202,9 +212,6 @@ func Dump(dns string, opts ...DumpOption) error {
 	buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
 	buf.WriteString("-- ----------------------------\n")
 	buf.Flush()
-
-	// 打印结果
-	fmt.Printf("Dumped %d databases, cost time: %s \n", len(dbs), time.Since(start).String())
 
 	return nil
 }

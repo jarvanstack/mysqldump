@@ -1,14 +1,15 @@
 -- ----------------------------
 -- MySQL Database Dump
--- Start Time: 2023-03-17 16:07:47
+-- Start Time: 2023-04-21 14:16:56
 -- ----------------------------
 
 
+USE `dc3`;
 DROP TABLE IF EXISTS `test`;
 -- ----------------------------
 -- Table structure for test
 -- ----------------------------
-CREATE TABLE `test` (
+CREATE TABLE IF NOT EXISTS `test` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
   `char_col` char(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
   `varchar_col` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci DEFAULT NULL,
@@ -55,5 +56,5 @@ INSERT INTO `test` VALUES (1,'abc','def',0x61626300000000000000,0x646566,0x74696
 
 -- ----------------------------
 -- Dumped by mysqldump2
--- Cost Time: 7.364804ms
+-- Cost Time: 5.81592ms
 -- ----------------------------

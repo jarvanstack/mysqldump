@@ -8,11 +8,13 @@ import (
 	"io"
 	"log"
 	"strings"
+	"time"
 )
 
 type sourceOption struct {
 	dryRun      bool
 	mergeInsert int
+	debug       bool
 }
 type SourceOption func(*sourceOption)
 
@@ -28,20 +30,33 @@ func WithMergeInsert(size int) SourceOption {
 	}
 }
 
-type DBWrapper struct {
-	DB     *sql.DB
-	dryRun bool
-}
-
-func NewDBWrapper(db *sql.DB, dryRun bool) *DBWrapper {
-
-	return &DBWrapper{
-		DB:     db,
-		dryRun: dryRun,
+// WithDebug 打印执行的 SQL
+func WithDebug() SourceOption {
+	return func(o *sourceOption) {
+		o.debug = true
 	}
 }
 
-func (db *DBWrapper) Exec(query string, args ...interface{}) (sql.Result, error) {
+type dbWrapper struct {
+	DB     *sql.DB
+	debug  bool
+	dryRun bool
+}
+
+func newDBWrapper(db *sql.DB, dryRun, debug bool) *dbWrapper {
+
+	return &dbWrapper{
+		DB:     db,
+		dryRun: dryRun,
+		debug:  debug,
+	}
+}
+
+func (db *dbWrapper) Exec(query string, args ...interface{}) (sql.Result, error) {
+	if db.debug {
+		log.Printf("[debug] [query]\n%s\n", query)
+	}
+
 	if db.dryRun {
 		return nil, nil
 	}
@@ -50,9 +65,17 @@ func (db *DBWrapper) Exec(query string, args ...interface{}) (sql.Result, error)
 
 // Source 加载
 func Source(dns string, reader io.Reader, opts ...SourceOption) error {
+	// 打印开始
+	start := time.Now()
+	log.Printf("[info] [source] start at %s\n", start.Format("2006-01-02 15:04:05"))
+	// 打印结束
+	defer func() {
+		end := time.Now()
+		log.Printf("[info] [source] end at %s, cost %s\n", end.Format("2006-01-02 15:04:05"), end.Sub(start))
+	}()
+
 	var err error
 	var db *sql.DB
-
 	var o sourceOption
 	for _, opt := range opts {
 		opt(&o)
@@ -73,7 +96,7 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 	defer db.Close()
 
 	// DB Wrapper
-	dbWrapper := NewDBWrapper(db, o.dryRun)
+	dbWrapper := newDBWrapper(db, o.dryRun, o.debug)
 
 	// Use database
 	_, err = dbWrapper.Exec(fmt.Sprintf("USE %s;", dbName))
