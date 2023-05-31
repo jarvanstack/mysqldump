@@ -12,7 +12,7 @@
 
 [简体中文](README-zh.md)
 
-A zero-dependency, high-performance, concurrent mysqldump tool implemented in golang.
+A zero-dependency,all data types are supported, high-performance, concurrent mysqldump tool implemented in golang.
 
 ## Features 
 
