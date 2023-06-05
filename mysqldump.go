@@ -31,7 +31,7 @@ type dumpOption struct {
 	isAllTable bool
 	// 是否删除表
 	isDropTable bool
-	// 是否增加选库脚本
+	// 是否增加选库脚本，多库导出时，此设置默认开启
 	isUseDb bool
 
 	//批量插入，提高导出效率
