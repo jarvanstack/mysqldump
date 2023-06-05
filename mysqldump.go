@@ -31,6 +31,11 @@ type dumpOption struct {
 	isAllTable bool
 	// 是否删除表
 	isDropTable bool
+	// 是否增加选库脚本
+	isUseDb bool
+
+	//批量插入，提高导出效率
+	perDataNumber int
 
 	// writer 默认为 os.Stdout
 	writer io.Writer
@@ -59,6 +64,13 @@ func WithAllDatabases() DumpOption {
 	}
 }
 
+// 是否增加指定库语句 如果多库，此设置无效
+func WithUseDb() DumpOption {
+	return func(option *dumpOption) {
+		option.isUseDb = true
+	}
+}
+
 // 导出指定数据库, 与 WithAllDatabases 互斥, WithAllDatabases 优先级高
 func WithDBs(databases ...string) DumpOption {
 	return func(option *dumpOption) {
@@ -77,6 +89,13 @@ func WithTables(tables ...string) DumpOption {
 func WithAllTable() DumpOption {
 	return func(option *dumpOption) {
 		option.isAllTable = true
+	}
+}
+
+// 批量insert
+func WithMultyInsert(num int) DumpOption {
+	return func(option *dumpOption) {
+		option.perDataNumber = num
 	}
 }
 
@@ -116,7 +135,6 @@ func Dump(dns string, opts ...DumpOption) error {
 			dbName,
 		}
 	}
-
 	if len(o.tables) == 0 {
 		// 默认包含全部表
 		o.isAllTable = true
@@ -156,7 +174,9 @@ func Dump(dns string, opts ...DumpOption) error {
 	} else {
 		dbs = o.dbs
 	}
-
+	if len(dbs) > 1 {
+		o.isUseDb = true
+	}
 	// 2. 获取表
 	for _, dbStr := range dbs {
 		_, err = db.Exec(fmt.Sprintf("USE `%s`", dbStr))
@@ -176,8 +196,10 @@ func Dump(dns string, opts ...DumpOption) error {
 		} else {
 			tables = o.tables
 		}
-
-		buf.WriteString(fmt.Sprintf("USE `%s`;\n", dbStr))
+		if o.isUseDb {
+			//多库导出时，才会增加选库操作，否则不加选库操作
+			buf.WriteString(fmt.Sprintf("USE `%s`;\n", dbStr))
+		}
 
 		// 3. 导出表
 		for _, table := range tables {
@@ -195,7 +217,7 @@ func Dump(dns string, opts ...DumpOption) error {
 
 			// 导出表数据
 			if o.isData {
-				err = writeTableData(db, table, buf)
+				err = writeTableData(db, table, buf, o.perDataNumber)
 				if err != nil {
 					log.Printf("[error] %v \n", err)
 					return err
@@ -284,7 +306,7 @@ func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 	return nil
 }
 
-func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
+func writeTableData(db *sql.DB, table string, buf *bufio.Writer, perDataNumber int) error {
 
 	// 导出表数据
 	buf.WriteString("-- ----------------------------\n")
@@ -311,7 +333,20 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 	}
 
 	var values [][]interface{}
+	rowId := 0
+
 	for lineRows.Next() {
+		ssql := ""
+		if rowId == 0 || perDataNumber < 2 || rowId%perDataNumber == 0 {
+			if rowId > 0 {
+				ssql = ";\n"
+			}
+			//表结构
+			ssql += "INSERT INTO `" + table + "` (`" + strings.Join(columns, "`,`") + "`) VALUES \n"
+		} else {
+			buf.WriteString(",\n")
+		}
+
 		row := make([]interface{}, len(columns))
 		rowPointers := make([]interface{}, len(columns))
 		for i := range columns {
@@ -322,9 +357,17 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 			log.Printf("[error] %v \n", err)
 			return err
 		}
+		rowString, err := buildRowData(row, columnTypes)
+		if err != nil {
+			return err
+		}
+		ssql += "(" + rowString + ")"
+		rowId += 1
+		buf.WriteString(ssql)
 		values = append(values, row)
 	}
-
+	buf.WriteString(";\n\n")
+	return nil
 	for _, row := range values {
 		ssql := "INSERT INTO `" + table + "` VALUES ("
 
@@ -417,4 +460,94 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 
 	buf.WriteString("\n\n")
 	return nil
+}
+
+func buildRowData(row []interface{}, columnTypes []*sql.ColumnType) (ssql string, err error) {
+	// var ssql string
+	for i, col := range row {
+		if col == nil {
+			ssql += "NULL"
+		} else {
+			Type := columnTypes[i].DatabaseTypeName()
+			// 去除 UNSIGNED 和空格
+			Type = strings.Replace(Type, "UNSIGNED", "", -1)
+			Type = strings.Replace(Type, " ", "", -1)
+			switch Type {
+			case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT":
+				if bs, ok := col.([]byte); ok {
+					ssql += fmt.Sprintf("%s", string(bs))
+				} else {
+					ssql += fmt.Sprintf("%d", col)
+				}
+			case "FLOAT", "DOUBLE":
+				if bs, ok := col.([]byte); ok {
+					ssql += fmt.Sprintf("%s", string(bs))
+				} else {
+					ssql += fmt.Sprintf("%f", col)
+				}
+			case "DECIMAL", "DEC":
+				ssql += fmt.Sprintf("%s", col)
+
+			case "DATE":
+				t, ok := col.(time.Time)
+				if !ok {
+					log.Println("DATE 类型转换错误")
+					return "", err
+				}
+				ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02"))
+			case "DATETIME":
+				t, ok := col.(time.Time)
+				if !ok {
+					log.Println("DATETIME 类型转换错误")
+					return "", err
+				}
+				ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
+			case "TIMESTAMP":
+				t, ok := col.(time.Time)
+				if !ok {
+					log.Println("TIMESTAMP 类型转换错误")
+					return "", err
+				}
+				ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
+			case "TIME":
+				t, ok := col.([]byte)
+				if !ok {
+					log.Println("TIME 类型转换错误")
+					return "", err
+				}
+				ssql += fmt.Sprintf("'%s'", string(t))
+			case "YEAR":
+				t, ok := col.([]byte)
+				if !ok {
+					log.Println("YEAR 类型转换错误")
+					return "", err
+				}
+				ssql += fmt.Sprintf("%s", string(t))
+			case "CHAR", "VARCHAR", "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT":
+				r := strings.NewReplacer("\n", "\\n", "'", "\\'", "\r", "\\r", "\"", "\\\"")
+				ssql += fmt.Sprintf("'%s'", r.Replace(fmt.Sprintf("%s", col)))
+				// ssql += fmt.Sprintf("'%s'", strings.Replace(fmt.Sprintf("%s", col), "'", "''", -1))
+			case "BIT", "BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB":
+				ssql += fmt.Sprintf("0x%X", col)
+			case "ENUM", "SET":
+				ssql += fmt.Sprintf("'%s'", col)
+			case "BOOL", "BOOLEAN":
+				if col.(bool) {
+					ssql += "true"
+				} else {
+					ssql += "false"
+				}
+			case "JSON":
+				ssql += fmt.Sprintf("'%s'", col)
+			default:
+				// unsupported type
+				// log.Printf("unsupported type: %s", Type)
+				return "", fmt.Errorf("unsupported type: %s", Type)
+			}
+		}
+		if i < len(row)-1 {
+			ssql += ","
+		}
+	}
+	return ssql, nil
 }
