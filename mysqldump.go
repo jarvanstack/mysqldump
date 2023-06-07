@@ -18,6 +18,8 @@ func init() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 }
 
+var version string = "v0.10.0"
+
 type dumpOption struct {
 	// 导出表数据
 	isData bool
@@ -40,7 +42,13 @@ type dumpOption struct {
 	// writer 默认为 os.Stdout
 	writer io.Writer
 }
-
+type triggerStruct struct {
+	Trigger   string
+	Event     string
+	Table     string
+	Statement string
+	Timing    string
+}
 type DumpOption func(*dumpOption)
 
 // 删除表
@@ -151,10 +159,11 @@ func Dump(dns string, opts ...DumpOption) error {
 	// 打印 Header
 	buf.WriteString("-- ----------------------------\n")
 	buf.WriteString("-- MySQL Database Dump\n")
+	buf.WriteString("-- GoMysqlDump version: " + version + "\n")
 	buf.WriteString("-- Start Time: " + start.Format("2006-01-02 15:04:05") + "\n")
 	buf.WriteString("-- ----------------------------\n")
 	buf.WriteString("\n\n")
-
+	buf.WriteString("/*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;\n")
 	// 连接数据库
 	db, err := sql.Open("mysql", dns)
 	if err != nil {
@@ -223,6 +232,12 @@ func Dump(dns string, opts ...DumpOption) error {
 					return err
 				}
 			}
+			sqls, err := writeTableTrigger(db, table)
+			if err != nil {
+				log.Printf("[error] %v \n", err)
+				return err
+			}
+			buf.WriteString(sqls)
 		}
 
 	}
@@ -312,6 +327,8 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer, perDataNumber i
 	buf.WriteString("-- ----------------------------\n")
 	buf.WriteString(fmt.Sprintf("-- Records of %s\n", table))
 	buf.WriteString("-- ----------------------------\n")
+	buf.WriteString(fmt.Sprintf("LOCK TABLES `%s` WRITE;\n", table))
+	buf.WriteString(fmt.Sprintf("/*!40000 ALTER TABLE `%s` DISABLE KEYS */;\n", table))
 
 	lineRows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", table))
 	if err != nil {
@@ -366,7 +383,9 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer, perDataNumber i
 		buf.WriteString(ssql)
 		values = append(values, row)
 	}
-	buf.WriteString(";\n\n")
+	buf.WriteString(";\n")
+	buf.WriteString(fmt.Sprintf("/*!40000 ALTER TABLE `%s` ENABLE KEYS */;\n", table))
+	buf.WriteString("UNLOCK TABLES;\n\n")
 	return nil
 	for _, row := range values {
 		ssql := "INSERT INTO `" + table + "` VALUES ("
@@ -550,4 +569,62 @@ func buildRowData(row []interface{}, columnTypes []*sql.ColumnType) (ssql string
 		}
 	}
 	return ssql, nil
+}
+
+func writeTableTrigger(db *sql.DB, table string) (sqls string, err error) {
+	var sql []string
+	trgs, err := db.Query("SHOW TRIGGERS")
+	if err != nil {
+		log.Printf("[error] %v \n", err)
+		return "", err
+	}
+	defer trgs.Close()
+
+	var columns []string
+	columns, err = trgs.Columns()
+	var triggers []triggerStruct
+	for trgs.Next() {
+		trgrow := make([]interface{}, len(columns))
+		rowPointers := make([]interface{}, len(columns))
+		for i := range columns {
+			rowPointers[i] = &trgrow[i]
+		}
+		err = trgs.Scan(rowPointers...)
+		if err != nil {
+			log.Printf("[error] %v \n", err)
+			return "", err
+		}
+		var trigger triggerStruct
+		for k, v := range trgrow {
+			switch columns[k] {
+			case "Table":
+				trigger.Table = fmt.Sprintf("%s", v)
+			case "Event":
+				trigger.Event = fmt.Sprintf("%s", v)
+			case "Trigger":
+				trigger.Trigger = fmt.Sprintf("%s", v)
+			case "Statement":
+				trigger.Statement = fmt.Sprintf("%s", v)
+			case "Timing":
+				trigger.Timing = fmt.Sprintf("%s", v)
+			}
+		}
+		if trigger.Table == table {
+			triggers = append(triggers, trigger)
+		}
+	}
+	if len(triggers) > 0 {
+		sql = append(sql, "-- ----------------------------")
+		sql = append(sql, "-- Dump table triggers --------")
+		sql = append(sql, "-- ----------------------------")
+	}
+	for _, v := range triggers {
+		sql = append(sql, "DELIMITER ;;")
+		sql = append(sql, "/*!50003 SET SESSION SQL_MODE=\"\" */;;")
+		sql = append(sql, fmt.Sprintf("/*!50003 CREATE TRIGGER `%s` %s %s ON `%s` FOR EACH ROW %s */;;", v.Trigger, v.Timing, v.Event, v.Table, v.Statement))
+		sql = append(sql, "DELIMITER ;")
+		sql = append(sql, "/*!50003 SET SESSION SQL_MODE=@OLD_SQL_MODE */;\n")
+	}
+
+	return strings.Join(sql, "\n"), nil
 }
