@@ -19,7 +19,8 @@ A zero-dependency,all data types are supported, high-performance, concurrent mys
 * Supports custom Writer: data can be written to any Writer, such as local files, multiple file storage, remote servers, cloud storage, etc. (default console output).
 * Supports all MySQL data types QuickStart.
 * Support Merge Insert Option in Source Greatly improve data recovery performance
-
+* Support multy data in one insert
+* Support dump table trigger 
 
 ## QuickStart
 
