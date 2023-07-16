@@ -18,7 +18,7 @@ func init() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 }
 
-var version string = "v0.10.0"
+var version string = "v0.10.2"
 
 type dumpOption struct {
 	// 导出表数据
@@ -49,6 +49,9 @@ type triggerStruct struct {
 	Statement string
 	Timing    string
 }
+
+var allTriggers map[string][]triggerStruct
+
 type DumpOption func(*dumpOption)
 
 // 删除表
@@ -115,6 +118,7 @@ func WithWriter(writer io.Writer) DumpOption {
 }
 
 func Dump(dns string, opts ...DumpOption) error {
+
 	// 打印开始
 	start := time.Now()
 	log.Printf("[info] [dump] start at %s\n", start.Format("2006-01-02 15:04:05"))
@@ -223,7 +227,6 @@ func Dump(dns string, opts ...DumpOption) error {
 				log.Printf("[error] %v \n", err)
 				return err
 			}
-
 			// 导出表数据
 			if o.isData {
 				err = writeTableData(db, table, buf, o.perDataNumber)
@@ -232,12 +235,11 @@ func Dump(dns string, opts ...DumpOption) error {
 					return err
 				}
 			}
-			sqls, err := writeTableTrigger(db, table)
+			err := writeTableTrigger(db, table, buf)
 			if err != nil {
 				log.Printf("[error] %v \n", err)
 				return err
 			}
-			buf.WriteString(sqls)
 		}
 
 	}
@@ -387,98 +389,7 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer, perDataNumber i
 	buf.WriteString(fmt.Sprintf("/*!40000 ALTER TABLE `%s` ENABLE KEYS */;\n", table))
 	buf.WriteString("UNLOCK TABLES;\n\n")
 	return nil
-	for _, row := range values {
-		ssql := "INSERT INTO `" + table + "` VALUES ("
 
-		for i, col := range row {
-			if col == nil {
-				ssql += "NULL"
-			} else {
-				Type := columnTypes[i].DatabaseTypeName()
-				// 去除 UNSIGNED 和空格
-				Type = strings.Replace(Type, "UNSIGNED", "", -1)
-				Type = strings.Replace(Type, " ", "", -1)
-				switch Type {
-				case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT":
-					if bs, ok := col.([]byte); ok {
-						ssql += fmt.Sprintf("%s", string(bs))
-					} else {
-						ssql += fmt.Sprintf("%d", col)
-					}
-				case "FLOAT", "DOUBLE":
-					if bs, ok := col.([]byte); ok {
-						ssql += fmt.Sprintf("%s", string(bs))
-					} else {
-						ssql += fmt.Sprintf("%f", col)
-					}
-				case "DECIMAL", "DEC":
-					ssql += fmt.Sprintf("%s", col)
-
-				case "DATE":
-					t, ok := col.(time.Time)
-					if !ok {
-						log.Println("DATE 类型转换错误")
-						return err
-					}
-					ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02"))
-				case "DATETIME":
-					t, ok := col.(time.Time)
-					if !ok {
-						log.Println("DATETIME 类型转换错误")
-						return err
-					}
-					ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
-				case "TIMESTAMP":
-					t, ok := col.(time.Time)
-					if !ok {
-						log.Println("TIMESTAMP 类型转换错误")
-						return err
-					}
-					ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
-				case "TIME":
-					t, ok := col.([]byte)
-					if !ok {
-						log.Println("TIME 类型转换错误")
-						return err
-					}
-					ssql += fmt.Sprintf("'%s'", string(t))
-				case "YEAR":
-					t, ok := col.([]byte)
-					if !ok {
-						log.Println("YEAR 类型转换错误")
-						return err
-					}
-					ssql += fmt.Sprintf("%s", string(t))
-				case "CHAR", "VARCHAR", "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT":
-					ssql += fmt.Sprintf("'%s'", strings.Replace(fmt.Sprintf("%s", col), "'", "''", -1))
-				case "BIT", "BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB":
-					ssql += fmt.Sprintf("0x%X", col)
-				case "ENUM", "SET":
-					ssql += fmt.Sprintf("'%s'", col)
-				case "BOOL", "BOOLEAN":
-					if col.(bool) {
-						ssql += "true"
-					} else {
-						ssql += "false"
-					}
-				case "JSON":
-					ssql += fmt.Sprintf("'%s'", col)
-				default:
-					// unsupported type
-					log.Printf("unsupported type: %s", Type)
-					return fmt.Errorf("unsupported type: %s", Type)
-				}
-			}
-			if i < len(row)-1 {
-				ssql += ","
-			}
-		}
-		ssql += ");\n"
-		buf.WriteString(ssql)
-	}
-
-	buf.WriteString("\n\n")
-	return nil
 }
 
 func buildRowData(row []interface{}, columnTypes []*sql.ColumnType) (ssql string, err error) {
@@ -571,18 +482,47 @@ func buildRowData(row []interface{}, columnTypes []*sql.ColumnType) (ssql string
 	return ssql, nil
 }
 
-func writeTableTrigger(db *sql.DB, table string) (sqls string, err error) {
+func writeTableTrigger(db *sql.DB, table string, buf *bufio.Writer) error {
 	var sql []string
+
+	triggers, err := getTrigger(db, table)
+	if err != nil {
+		log.Printf("[error] %v \n", err)
+		return err
+	}
+	if len(triggers) > 0 {
+		sql = append(sql, "-- ----------------------------")
+		sql = append(sql, fmt.Sprintf("-- Dump table triggers of %s--------", table))
+		sql = append(sql, "-- ----------------------------")
+	}
+	for _, v := range triggers {
+		sql = append(sql, "DELIMITER ;;")
+		sql = append(sql, "/*!50003 SET SESSION SQL_MODE=\"\" */;;")
+		sql = append(sql, fmt.Sprintf("/*!50003 CREATE TRIGGER `%s` %s %s ON `%s` FOR EACH ROW %s */;;", v.Trigger, v.Timing, v.Event, v.Table, v.Statement))
+		sql = append(sql, "DELIMITER ;")
+		sql = append(sql, "/*!50003 SET SESSION SQL_MODE=@OLD_SQL_MODE */;\n")
+	}
+	buf.WriteString(strings.Join(sql, "\n"))
+	return nil
+}
+
+func getTrigger(db *sql.DB, table string) (trigger []triggerStruct, err error) {
+	if allTriggers != nil {
+		trigger = allTriggers[table]
+		return trigger, nil
+	} else {
+		allTriggers = make(map[string][]triggerStruct)
+	}
 	trgs, err := db.Query("SHOW TRIGGERS")
 	if err != nil {
 		log.Printf("[error] %v \n", err)
-		return "", err
+		return trigger, err
 	}
 	defer trgs.Close()
 
 	var columns []string
 	columns, err = trgs.Columns()
-	var triggers []triggerStruct
+
 	for trgs.Next() {
 		trgrow := make([]interface{}, len(columns))
 		rowPointers := make([]interface{}, len(columns))
@@ -592,7 +532,7 @@ func writeTableTrigger(db *sql.DB, table string) (sqls string, err error) {
 		err = trgs.Scan(rowPointers...)
 		if err != nil {
 			log.Printf("[error] %v \n", err)
-			return "", err
+			return trigger, err
 		}
 		var trigger triggerStruct
 		for k, v := range trgrow {
@@ -609,22 +549,7 @@ func writeTableTrigger(db *sql.DB, table string) (sqls string, err error) {
 				trigger.Timing = fmt.Sprintf("%s", v)
 			}
 		}
-		if trigger.Table == table {
-			triggers = append(triggers, trigger)
-		}
+		allTriggers[trigger.Table] = append(allTriggers[trigger.Table], trigger)
 	}
-	if len(triggers) > 0 {
-		sql = append(sql, "-- ----------------------------")
-		sql = append(sql, "-- Dump table triggers --------")
-		sql = append(sql, "-- ----------------------------")
-	}
-	for _, v := range triggers {
-		sql = append(sql, "DELIMITER ;;")
-		sql = append(sql, "/*!50003 SET SESSION SQL_MODE=\"\" */;;")
-		sql = append(sql, fmt.Sprintf("/*!50003 CREATE TRIGGER `%s` %s %s ON `%s` FOR EACH ROW %s */;;", v.Trigger, v.Timing, v.Event, v.Table, v.Statement))
-		sql = append(sql, "DELIMITER ;")
-		sql = append(sql, "/*!50003 SET SESSION SQL_MODE=@OLD_SQL_MODE */;\n")
-	}
-
-	return strings.Join(sql, "\n"), nil
+	return allTriggers[table], nil
 }
