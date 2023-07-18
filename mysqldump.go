@@ -21,10 +21,7 @@ func init() {
 type dumpOption struct {
 	// 导出表数据
 	isData bool
-	// 导出指定数据库, 与 WithAllDatabases 互斥, WithAllDatabases 优先级高
-	dbs []string
-	// 导出全部数据库
-	isAllDB bool
+
 	// 导出指定表, 与 isAllTables 互斥, isAllTables 优先级高
 	tables []string
 	// 导出全部表
@@ -49,20 +46,6 @@ func WithDropTable() DumpOption {
 func WithData() DumpOption {
 	return func(option *dumpOption) {
 		option.isData = true
-	}
-}
-
-// 导出全部数据库
-func WithAllDatabases() DumpOption {
-	return func(option *dumpOption) {
-		option.isAllDB = true
-	}
-}
-
-// 导出指定数据库, 与 WithAllDatabases 互斥, WithAllDatabases 优先级高
-func WithDBs(databases ...string) DumpOption {
-	return func(option *dumpOption) {
-		option.dbs = databases
 	}
 }
 
@@ -105,18 +88,6 @@ func Dump(dns string, opts ...DumpOption) error {
 		opt(&o)
 	}
 
-	if len(o.dbs) == 0 {
-		// 默认包含dns中的数据库
-		dbName, err := GetDBNameFromDNS(dns)
-		if err != nil {
-			log.Printf("[error] %v \n", err)
-			return err
-		}
-		o.dbs = []string{
-			dbName,
-		}
-	}
-
 	if len(o.tables) == 0 {
 		// 默认包含全部表
 		o.isAllTable = true
@@ -146,69 +117,58 @@ func Dump(dns string, opts ...DumpOption) error {
 	defer db.Close()
 
 	// 1. 获取数据库
-	var dbs []string
-	if o.isAllDB {
-		dbs, err = getDBs(db)
-		if err != nil {
-			log.Printf("[error] %v \n", err)
-			return err
-		}
-	} else {
-		dbs = o.dbs
+	dbName, err := GetDBNameFromDNS(dns)
+	if err != nil {
+		log.Printf("[error] %v \n", err)
+		return err
+	}
+	_, err = db.Exec(fmt.Sprintf("USE `%s`", dbName))
+	if err != nil {
+		log.Printf("[error] %v \n", err)
+		return err
 	}
 
 	// 2. 获取表
-	for _, dbStr := range dbs {
-		_, err = db.Exec(fmt.Sprintf("USE `%s`", dbStr))
+	var tables []string
+	if o.isAllTable {
+		tmp, err := getAllTables(db)
+		if err != nil {
+			log.Printf("[error] %v \n", err)
+			return err
+		}
+		tables = tmp
+	} else {
+		tables = o.tables
+	}
+
+	// 3. 导出表
+	for _, table := range tables {
+		// 删除表
+		if o.isDropTable {
+			buf.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS `%s`;\n", table))
+		}
+
+		// 导出表结构
+		err = writeTableStruct(db, table, buf)
 		if err != nil {
 			log.Printf("[error] %v \n", err)
 			return err
 		}
 
-		var tables []string
-		if o.isAllTable {
-			tmp, err := getAllTables(db)
+		// 导出表数据
+		if o.isData {
+			err = writeTableData(db, table, buf)
 			if err != nil {
 				log.Printf("[error] %v \n", err)
 				return err
 			}
-			tables = tmp
-		} else {
-			tables = o.tables
 		}
-
-		buf.WriteString(fmt.Sprintf("USE `%s`;\n", dbStr))
-
-		// 3. 导出表
-		for _, table := range tables {
-			// 删除表
-			if o.isDropTable {
-				buf.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS `%s`;\n", table))
-			}
-
-			// 导出表结构
-			err = writeTableStruct(db, table, buf)
-			if err != nil {
-				log.Printf("[error] %v \n", err)
-				return err
-			}
-
-			// 导出表数据
-			if o.isData {
-				err = writeTableData(db, table, buf)
-				if err != nil {
-					log.Printf("[error] %v \n", err)
-					return err
-				}
-			}
-		}
-
 	}
 
 	// 导出每个表的结构和数据
 
 	buf.WriteString("-- ----------------------------\n")
-	buf.WriteString("-- Dumped by mysqldump2\n")
+	buf.WriteString("-- Dumped by mysqldump\n")
 	buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
 	buf.WriteString("-- ----------------------------\n")
 	buf.Flush()

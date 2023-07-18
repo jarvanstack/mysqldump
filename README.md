@@ -90,7 +90,6 @@ func main() {
 		mysqldump.WithData(),         // Option: Dump Data (Default: Only dump table schema)
 		mysqldump.WithTables("test"), // Option: Dump Tables (Default: All tables)
 		mysqldump.WithWriter(f),      // Option: Writer (Default: os.Stdout)
-		mysqldump.WithDBs("dc3"),     // Option: Dump Dbs (Default: db in dns)
 	)
 }
 ```
@@ -178,8 +177,8 @@ func main() {
 	_ = mysqldump.Source(
 		dns,
 		f,
-    mysqldump.WithMergeInsert(1000),// Option: Merge insert 1000 (Default: Not merge insert)
-		mysqldump.WithDebug(),          // Option: Print execute sql (Default: Not print execute sql)
+		mysqldump.WithMergeInsert(1000), // Option: Merge insert 1000 (Default: Not merge insert)
+		mysqldump.WithDebug(),           // Option: Print execute sql (Default: Not print execute sql)
 	)
 }
 ```
