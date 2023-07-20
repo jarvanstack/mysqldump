@@ -18,7 +18,7 @@ func init() {
 	log.SetFlags(log.Lshortfile | log.LstdFlags)
 }
 
-var version string = "v0.10.2"
+var version string = "v0.11.0"
 
 type dumpOption struct {
 	// 导出表数据
