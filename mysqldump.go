@@ -41,6 +41,8 @@ type dumpOption struct {
 
 	// writer 默认为 os.Stdout
 	writer io.Writer
+	//是否输出日志
+	logOut bool
 }
 type triggerStruct struct {
 	Trigger   string
@@ -117,20 +119,32 @@ func WithWriter(writer io.Writer) DumpOption {
 	}
 }
 
-func Dump(dns string, opts ...DumpOption) error {
+// 是否输出日志
+// @TODO: 后续增加日志的handle用于输出到其他地方
+func WithLogOut(logOut bool) DumpOption {
+	return func(option *dumpOption) {
+		option.logOut = logOut
+	}
+}
 
-	// 打印开始
-	start := time.Now()
-	log.Printf("[info] [dump] start at %s\n", start.Format("2006-01-02 15:04:05"))
-	// 打印结束
-	defer func() {
-		end := time.Now()
-		log.Printf("[info] [dump] end at %s, cost %s\n", end.Format("2006-01-02 15:04:05"), end.Sub(start))
-	}()
+func Dump(dns string, opts ...DumpOption) error {
 
 	var err error
 
 	var o dumpOption
+	// 打印开始
+	start := time.Now()
+	if o.logOut {
+		log.Printf("[info] [dump] start at %s\n", start.Format("2006-01-02 15:04:05"))
+	}
+
+	// 打印结束
+	defer func() {
+		end := time.Now()
+		if o.logOut {
+			log.Printf("[info] [dump] end at %s, cost %s\n", end.Format("2006-01-02 15:04:05"), end.Sub(start))
+		}
+	}()
 
 	for _, opt := range opts {
 		opt(&o)
@@ -171,7 +185,9 @@ func Dump(dns string, opts ...DumpOption) error {
 	// 连接数据库
 	db, err := sql.Open("mysql", dns)
 	if err != nil {
-		log.Printf("[error] %v \n", err)
+		if o.logOut {
+			log.Printf("[error] %v \n", err)
+		}
 		return err
 	}
 	defer db.Close()
@@ -181,7 +197,9 @@ func Dump(dns string, opts ...DumpOption) error {
 	if o.isAllDB {
 		dbs, err = getDBs(db)
 		if err != nil {
-			log.Printf("[error] %v \n", err)
+			if o.logOut {
+				log.Printf("[error] %v \n", err)
+			}
 			return err
 		}
 	} else {
@@ -194,7 +212,9 @@ func Dump(dns string, opts ...DumpOption) error {
 	for _, dbStr := range dbs {
 		_, err = db.Exec(fmt.Sprintf("USE `%s`", dbStr))
 		if err != nil {
-			log.Printf("[error] %v \n", err)
+			if o.logOut {
+				log.Printf("[error] %v \n", err)
+			}
 			return err
 		}
 
@@ -202,7 +222,9 @@ func Dump(dns string, opts ...DumpOption) error {
 		if o.isAllTable {
 			tmp, err := getAllTables(db)
 			if err != nil {
-				log.Printf("[error] %v \n", err)
+				if o.logOut {
+					log.Printf("[error] %v \n", err)
+				}
 				return err
 			}
 			tables = tmp
@@ -216,30 +238,59 @@ func Dump(dns string, opts ...DumpOption) error {
 
 		// 3. 导出表
 		for _, table := range tables {
-			// 删除表
-			if o.isDropTable {
-				buf.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS `%s`;\n", table))
-			}
 
-			// 导出表结构
-			err = writeTableStruct(db, table, buf)
+			tt, err := getTableType(db, table)
 			if err != nil {
-				log.Printf("[error] %v \n", err)
 				return err
 			}
-			// 导出表数据
-			if o.isData {
-				err = writeTableData(db, table, buf, o.perDataNumber)
+
+			if tt == "TABLE" {
+				// 删除表
+				if o.isDropTable {
+					buf.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS `%s`;\n", table))
+				}
+
+				// 导出表结构
+				err = writeTableStruct(db, table, buf)
 				if err != nil {
-					log.Printf("[error] %v \n", err)
+					if o.logOut {
+						log.Printf("[error] %v \n", err)
+					}
+					return err
+				}
+				// 导出表数据
+				if o.isData {
+					err = writeTableData(db, table, buf, o.perDataNumber)
+					if err != nil {
+						if o.logOut {
+							log.Printf("[error] %v \n", err)
+						}
+						return err
+					}
+				}
+				err := writeTableTrigger(db, table, buf)
+				if err != nil {
+					if o.logOut {
+						log.Printf("[error] %v \n", err)
+					}
 					return err
 				}
 			}
-			err := writeTableTrigger(db, table, buf)
-			if err != nil {
-				log.Printf("[error] %v \n", err)
-				return err
+			if tt == "VIEW" {
+				// 删除视图
+				if o.isDropTable {
+					buf.WriteString(fmt.Sprintf("DROP VIEW IF EXISTS  `%s`;\n", table))
+				}
+				// 导出视图结构
+				err = writeViewStruct(db, table, buf)
+				if err != nil {
+					if o.logOut {
+						log.Printf("[error] %v \n", err)
+					}
+					return err
+				}
 			}
+
 		}
 
 	}
@@ -254,9 +305,27 @@ func Dump(dns string, opts ...DumpOption) error {
 
 	return nil
 }
+func getTableType(db *sql.DB, table string) (t string, err error) {
+	query := fmt.Sprintf("SELECT TABLE_TYPE FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = '%s'", table)
+	var tableType string
+	err = db.QueryRow(query).Scan(&tableType)
+	if err != nil {
+		return "", err
+	}
+	switch tableType {
+	case "BASE TABLE":
+		return "TABLE", nil
+	case "VIEW":
+		return "VIEW", nil
+	default:
+		return "", nil
+	}
+}
 
 func getCreateTableSQL(db *sql.DB, table string) (string, error) {
+
 	var createTableSQL string
+
 	err := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", table)).Scan(&table, &createTableSQL)
 	if err != nil {
 		return "", err
@@ -312,7 +381,27 @@ func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 
 	createTableSQL, err := getCreateTableSQL(db, table)
 	if err != nil {
-		log.Printf("[error] %v \n", err)
+		return err
+	}
+	buf.WriteString(createTableSQL)
+	buf.WriteString(";")
+
+	buf.WriteString("\n\n")
+	buf.WriteString("\n\n")
+	return nil
+}
+
+func writeViewStruct(db *sql.DB, table string, buf *bufio.Writer) error {
+	// 导出视图
+	buf.WriteString("-- ----------------------------\n")
+	buf.WriteString(fmt.Sprintf("-- View structure for %s\n", table))
+	buf.WriteString("-- ----------------------------\n")
+
+	var createTableSQL string
+	var charact string
+	var connect string
+	err := db.QueryRow(fmt.Sprintf("SHOW CREATE TABLE `%s`", table)).Scan(&table, &createTableSQL, &charact, &connect)
+	if err != nil {
 		return err
 	}
 	buf.WriteString(createTableSQL)
@@ -334,7 +423,6 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer, perDataNumber i
 
 	lineRows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", table))
 	if err != nil {
-		log.Printf("[error] %v \n", err)
 		return err
 	}
 	defer lineRows.Close()
@@ -342,12 +430,10 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer, perDataNumber i
 	var columns []string
 	columns, err = lineRows.Columns()
 	if err != nil {
-		log.Printf("[error] %v \n", err)
 		return err
 	}
 	columnTypes, err := lineRows.ColumnTypes()
 	if err != nil {
-		log.Printf("[error] %v \n", err)
 		return err
 	}
 
@@ -373,7 +459,6 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer, perDataNumber i
 		}
 		err = lineRows.Scan(rowPointers...)
 		if err != nil {
-			log.Printf("[error] %v \n", err)
 			return err
 		}
 		rowString, err := buildRowData(row, columnTypes)
@@ -421,35 +506,30 @@ func buildRowData(row []interface{}, columnTypes []*sql.ColumnType) (ssql string
 			case "DATE":
 				t, ok := col.(time.Time)
 				if !ok {
-					log.Println("DATE 类型转换错误")
 					return "", err
 				}
 				ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02"))
 			case "DATETIME":
 				t, ok := col.(time.Time)
 				if !ok {
-					log.Println("DATETIME 类型转换错误")
 					return "", err
 				}
 				ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
 			case "TIMESTAMP":
 				t, ok := col.(time.Time)
 				if !ok {
-					log.Println("TIMESTAMP 类型转换错误")
 					return "", err
 				}
 				ssql += fmt.Sprintf("'%s'", t.Format("2006-01-02 15:04:05"))
 			case "TIME":
 				t, ok := col.([]byte)
 				if !ok {
-					log.Println("TIME 类型转换错误")
 					return "", err
 				}
 				ssql += fmt.Sprintf("'%s'", string(t))
 			case "YEAR":
 				t, ok := col.([]byte)
 				if !ok {
-					log.Println("YEAR 类型转换错误")
 					return "", err
 				}
 				ssql += fmt.Sprintf("%s", string(t))
@@ -471,7 +551,6 @@ func buildRowData(row []interface{}, columnTypes []*sql.ColumnType) (ssql string
 				ssql += fmt.Sprintf("'%s'", col)
 			default:
 				// unsupported type
-				// log.Printf("unsupported type: %s", Type)
 				return "", fmt.Errorf("unsupported type: %s", Type)
 			}
 		}
@@ -487,7 +566,6 @@ func writeTableTrigger(db *sql.DB, table string, buf *bufio.Writer) error {
 
 	triggers, err := getTrigger(db, table)
 	if err != nil {
-		log.Printf("[error] %v \n", err)
 		return err
 	}
 	if len(triggers) > 0 {
@@ -515,7 +593,6 @@ func getTrigger(db *sql.DB, table string) (trigger []triggerStruct, err error) {
 	}
 	trgs, err := db.Query("SHOW TRIGGERS")
 	if err != nil {
-		log.Printf("[error] %v \n", err)
 		return trigger, err
 	}
 	defer trgs.Close()
@@ -531,7 +608,6 @@ func getTrigger(db *sql.DB, table string) (trigger []triggerStruct, err error) {
 		}
 		err = trgs.Scan(rowPointers...)
 		if err != nil {
-			log.Printf("[error] %v \n", err)
 			return trigger, err
 		}
 		var trigger triggerStruct
