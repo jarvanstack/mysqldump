@@ -70,7 +70,7 @@ func WithWriter(writer io.Writer) DumpOption {
 	}
 }
 
-func Dump(dns string, opts ...DumpOption) error {
+func Dump(dsn string, opts ...DumpOption) error {
 	// 打印开始
 	start := time.Now()
 	log.Printf("[info] [dump] start at %s\n", start.Format("2006-01-02 15:04:05"))
@@ -109,7 +109,7 @@ func Dump(dns string, opts ...DumpOption) error {
 	buf.WriteString("\n\n")
 
 	// 连接数据库
-	db, err := sql.Open("mysql", dns)
+	db, err := sql.Open("mysql", dsn)
 	if err != nil {
 		log.Printf("[error] %v \n", err)
 		return err
@@ -117,7 +117,7 @@ func Dump(dns string, opts ...DumpOption) error {
 	defer db.Close()
 
 	// 1. 获取数据库
-	dbName, err := GetDBNameFromDNS(dns)
+	dbName, err := GetDBNameFromDSN(dsn)
 	if err != nil {
 		log.Printf("[error] %v \n", err)
 		return err
