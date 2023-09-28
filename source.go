@@ -64,7 +64,7 @@ func (db *dbWrapper) Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
 // Source 加载
-func Source(dns string, reader io.Reader, opts ...SourceOption) error {
+func Source(dsn string, reader io.Reader, opts ...SourceOption) error {
 	// 打印开始
 	start := time.Now()
 	log.Printf("[info] [source] start at %s\n", start.Format("2006-01-02 15:04:05"))
@@ -81,14 +81,14 @@ func Source(dns string, reader io.Reader, opts ...SourceOption) error {
 		opt(&o)
 	}
 
-	dbName, err := GetDBNameFromDNS(dns)
+	dbName, err := GetDBNameFromDSN(dsn)
 	if err != nil {
 		log.Printf("[error] %v\n", err)
 		return err
 	}
 
 	// Open database
-	db, err = sql.Open("mysql", dns)
+	db, err = sql.Open("mysql", dsn)
 	if err != nil {
 		log.Printf("[error] %v\n", err)
 		return err
