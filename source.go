@@ -64,6 +64,8 @@ func (db *dbWrapper) Exec(query string, args ...interface{}) (sql.Result, error)
 }
 
 // Source 加载
+// 禁止 golangci-lint 检查
+// nolint: gocyclo
 func Source(dsn string, reader io.Reader, opts ...SourceOption) error {
 	// 打印开始
 	start := time.Now()
@@ -130,7 +132,7 @@ func Source(dsn string, reader io.Reader, opts ...SourceOption) error {
 		ssql := string(line)
 
 		// 删除末尾的换行符
-		ssql, err = trim(ssql)
+		ssql = trim(ssql)
 		if err != nil {
 			log.Printf("[error] [trim] %v\n", err)
 			return err
@@ -151,7 +153,7 @@ func Source(dsn string, reader io.Reader, opts ...SourceOption) error {
 				}
 
 				ssql2 := string(line)
-				ssql2, err = trim(ssql2)
+				ssql2 = trim(ssql2)
 				if err != nil {
 					log.Printf("[error] [trim] %v\n", err)
 					return err
@@ -232,8 +234,8 @@ func mergeInsert(insertSQLs []string) (string, error) {
 }
 
 // 删除空白符换行符和注释
-func trim(s string) (string, error) {
+func trim(s string) string {
 	s = strings.TrimLeft(s, "\n")
 	s = strings.TrimSpace(s)
-	return s, nil
+	return s
 }

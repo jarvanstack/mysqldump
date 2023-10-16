@@ -102,11 +102,11 @@ func Dump(dsn string, opts ...DumpOption) error {
 	defer buf.Flush()
 
 	// 打印 Header
-	buf.WriteString("-- ----------------------------\n")
-	buf.WriteString("-- MySQL Database Dump\n")
-	buf.WriteString("-- Start Time: " + start.Format("2006-01-02 15:04:05") + "\n")
-	buf.WriteString("-- ----------------------------\n")
-	buf.WriteString("\n\n")
+	_, _ = buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString("-- MySQL Database Dump\n")
+	_, _ = buf.WriteString("-- Start Time: " + start.Format("2006-01-02 15:04:05") + "\n")
+	_, _ = buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString("\n\n")
 
 	// 连接数据库
 	db, err := sql.Open("mysql", dsn)
@@ -145,7 +145,7 @@ func Dump(dsn string, opts ...DumpOption) error {
 	for _, table := range tables {
 		// 删除表
 		if o.isDropTable {
-			buf.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS `%s`;\n", table))
+			_, _ = buf.WriteString(fmt.Sprintf("DROP TABLE IF EXISTS `%s`;\n", table))
 		}
 
 		// 导出表结构
@@ -167,10 +167,10 @@ func Dump(dsn string, opts ...DumpOption) error {
 
 	// 导出每个表的结构和数据
 
-	buf.WriteString("-- ----------------------------\n")
-	buf.WriteString("-- Dumped by mysqldump\n")
-	buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
-	buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString("-- Dumped by mysqldump\n")
+	_, _ = buf.WriteString("-- Cost Time: " + time.Since(start).String() + "\n")
+	_, _ = buf.WriteString("-- ----------------------------\n")
 	buf.Flush()
 
 	return nil
@@ -185,25 +185,6 @@ func getCreateTableSQL(db *sql.DB, table string) (string, error) {
 	// IF NOT EXISTS
 	createTableSQL = strings.Replace(createTableSQL, "CREATE TABLE", "CREATE TABLE IF NOT EXISTS", 1)
 	return createTableSQL, nil
-}
-
-func getDBs(db *sql.DB) ([]string, error) {
-	var dbs []string
-	rows, err := db.Query("SHOW DATABASES")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var db string
-		err = rows.Scan(&db)
-		if err != nil {
-			return nil, err
-		}
-		dbs = append(dbs, db)
-	}
-	return dbs, nil
 }
 
 func getAllTables(db *sql.DB) ([]string, error) {
@@ -227,29 +208,31 @@ func getAllTables(db *sql.DB) ([]string, error) {
 
 func writeTableStruct(db *sql.DB, table string, buf *bufio.Writer) error {
 	// 导出表结构
-	buf.WriteString("-- ----------------------------\n")
-	buf.WriteString(fmt.Sprintf("-- Table structure for %s\n", table))
-	buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString(fmt.Sprintf("-- Table structure for %s\n", table))
+	_, _ = buf.WriteString("-- ----------------------------\n")
 
 	createTableSQL, err := getCreateTableSQL(db, table)
 	if err != nil {
 		log.Printf("[error] %v \n", err)
 		return err
 	}
-	buf.WriteString(createTableSQL)
-	buf.WriteString(";")
+	_, _ = buf.WriteString(createTableSQL)
+	_, _ = buf.WriteString(";")
 
-	buf.WriteString("\n\n")
-	buf.WriteString("\n\n")
+	_, _ = buf.WriteString("\n\n")
+	_, _ = buf.WriteString("\n\n")
 	return nil
 }
 
+// 禁止 golangci-lint 检查
+// nolint: gocyclo
 func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 
 	// 导出表数据
-	buf.WriteString("-- ----------------------------\n")
-	buf.WriteString(fmt.Sprintf("-- Records of %s\n", table))
-	buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString("-- ----------------------------\n")
+	_, _ = buf.WriteString(fmt.Sprintf("-- Records of %s\n", table))
+	_, _ = buf.WriteString("-- ----------------------------\n")
 
 	lineRows, err := db.Query(fmt.Sprintf("SELECT * FROM `%s`", table))
 	if err != nil {
@@ -299,13 +282,13 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 				switch Type {
 				case "TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT":
 					if bs, ok := col.([]byte); ok {
-						ssql += fmt.Sprintf("%s", string(bs))
+						ssql += string(bs)
 					} else {
 						ssql += fmt.Sprintf("%d", col)
 					}
 				case "FLOAT", "DOUBLE":
 					if bs, ok := col.([]byte); ok {
-						ssql += fmt.Sprintf("%s", string(bs))
+						ssql += string(bs)
 					} else {
 						ssql += fmt.Sprintf("%f", col)
 					}
@@ -346,7 +329,7 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 						log.Println("YEAR 类型转换错误")
 						return err
 					}
-					ssql += fmt.Sprintf("%s", string(t))
+					ssql += string(t)
 				case "CHAR", "VARCHAR", "TINYTEXT", "TEXT", "MEDIUMTEXT", "LONGTEXT":
 					ssql += fmt.Sprintf("'%s'", strings.Replace(fmt.Sprintf("%s", col), "'", "''", -1))
 				case "BIT", "BINARY", "VARBINARY", "TINYBLOB", "BLOB", "MEDIUMBLOB", "LONGBLOB":
@@ -372,9 +355,9 @@ func writeTableData(db *sql.DB, table string, buf *bufio.Writer) error {
 			}
 		}
 		ssql += ");\n"
-		buf.WriteString(ssql)
+		_, _ = buf.WriteString(ssql)
 	}
 
-	buf.WriteString("\n\n")
+	_, _ = buf.WriteString("\n\n")
 	return nil
 }
