@@ -12,7 +12,7 @@
 
 [English](./README.md)
 
-golang 实现的零依赖、高性能、并发 mysqldump 工具。
+golang 实现的零依赖、支持所有类型、高性能、并发 mysqldump 工具。
 
 
 ## Features
@@ -80,19 +80,19 @@ import (
 
 func main() {
 
-	dns := "root:rootpasswd@tcp(localhost:3306)/dbname?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+	dsn := "root:rootpasswd@tcp(localhost:3306)/dbname?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
 
 	f, _ := os.Create("dump.sql")
 
 	_ = mysqldump.Dump(
-		dns,                          // DNS
+		dsn,                          // DSN
 		mysqldump.WithDropTable(),    // Option: Delete table before create (Default: Not delete table)
 		mysqldump.WithData(),         // Option: Dump Data (Default: Only dump table schema)
 		mysqldump.WithTables("test"), // Option: Dump Tables (Default: All tables)
 		mysqldump.WithWriter(f),      // Option: Writer (Default: os.Stdout)
-		mysqldump.WithDBs("dc3"),     // Option: Dump Dbs (Default: db in dns)
 	)
 }
+
 ```
 
 ### Output File dump.sql
@@ -172,14 +172,14 @@ import (
 
 func main() {
 
-	dns := "root:rootpasswd@tcp(localhost:3306)/dbname?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
+	dsn := "root:rootpasswd@tcp(localhost:3306)/dbname?charset=utf8mb4&parseTime=true&loc=Asia%2FShanghai"
 	f, _ := os.Open("dump.sql")
 
 	_ = mysqldump.Source(
-		dns,
+		dsn,
 		f,
-    mysqldump.WithMergeInsert(1000),// Option: Merge insert 1000 (Default: Not merge insert)
-		mysqldump.WithDebug(),          // Option: Print execute sql (Default: Not print execute sql)
+		mysqldump.WithMergeInsert(1000), // Option: Merge insert 1000 (Default: Not merge insert)
+		mysqldump.WithDebug(),           // Option: Print execute sql (Default: Not print execute sql)
 	)
 }
 ```
